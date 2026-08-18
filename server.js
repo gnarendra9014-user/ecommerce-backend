@@ -5,6 +5,7 @@ console.log("JWT Secret:", process.env.JWT_SECRET);
 const pool = require("./db");
 const productRoutes = require("./routes/productRoutes");
 const cartRoutes = require("./cart/cartRoutes");
+const orderRoutes = require("./orders/orderRoutes");
 
 const app = express();
 
@@ -22,7 +23,7 @@ pool.query("SELECT NOW()", (err, result) => {
 app.use("/products", productRoutes);
 app.use("/auth", authRoutes);
 app.use("/cart", cartRoutes);
-
+app.use("/orders", orderRoutes);
 app.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
 });
