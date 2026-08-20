@@ -1,6 +1,7 @@
 const pool = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const sendOTPEmail = require("../utils/mailer");
 
 const register = async (req, res) => {
     try {
@@ -92,8 +93,112 @@ const login = async (req, res) => {
         });
     }
 };
+// POST /auth/send-otp
+const sendOTP = async (req, res) => {
+
+    try {
+
+        const { email } = req.body;
+
+        const user = await pool.query(
+            "SELECT * FROM users WHERE email = $1",
+            [email]
+        );
+
+        if (user.rows.length === 0) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        const expiry = new Date(Date.now() + 5 * 60 * 1000);
+
+        await pool.query(
+            `UPDATE users
+             SET otp = $1,
+                 otp_expiry = $2
+             WHERE email = $3`,
+            [otp, expiry, email]
+        );
+
+        await sendOTPEmail(email, otp);
+
+        res.json({
+            message: "OTP sent successfully"
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            error: "Failed to send OTP"
+        });
+
+    }
+
+};
+// POST /auth/verify-otp
+const verifyOTP = async (req, res) => {
+    try {
+
+        const { email, otp } = req.body;
+
+        const user = await pool.query(
+            "SELECT * FROM users WHERE email = $1",
+            [email]
+        );
+
+        if (user.rows.length === 0) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const currentUser = user.rows[0];
+
+        if (currentUser.otp !== otp) {
+            return res.status(400).json({
+                message: "Invalid OTP"
+            });
+        }
+
+        if (new Date(currentUser.otp_expiry) < new Date()) {
+            return res.status(400).json({
+                message: "OTP expired"
+            });
+        }
+
+        // Clear OTP after successful verification
+        await pool.query(
+            `UPDATE users
+             SET otp = NULL,
+                 otp_expiry = NULL
+             WHERE email = $1`,
+            [email]
+        );
+
+        res.json({
+            message: "OTP verified successfully"
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            error: "OTP verification failed"
+        });
+
+    }
+};
 
 module.exports = {
     register,
-    login
+    login,
+    sendOTP,
+    verifyOTP
+
 };
