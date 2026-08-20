@@ -194,11 +194,114 @@ const verifyOTP = async (req, res) => {
 
     }
 };
+// POST /auth/forgot-password
+const forgotPassword = async (req, res) => {
+    try {
+
+        const { email } = req.body;
+
+        const user = await pool.query(
+            "SELECT * FROM users WHERE email = $1",
+            [email]
+        );
+
+        if (user.rows.length === 0) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        const expiry = new Date(Date.now() + 5 * 60 * 1000);
+
+        await pool.query(
+            `UPDATE users
+             SET otp = $1,
+                 otp_expiry = $2
+             WHERE email = $3`,
+            [otp, expiry, email]
+        );
+
+        await sendOTPEmail(email, otp);
+
+        res.json({
+            message: "Password reset OTP sent"
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            error: "Failed to send reset OTP"
+        });
+
+    }
+};
+// POST /auth/reset-password
+const resetPassword = async (req, res) => {
+    try {
+
+        const { email, otp, newPassword } = req.body;
+
+        const user = await pool.query(
+            "SELECT * FROM users WHERE email = $1",
+            [email]
+        );
+
+        if (user.rows.length === 0) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const currentUser = user.rows[0];
+
+        if (currentUser.otp !== otp) {
+            return res.status(400).json({
+                message: "Invalid OTP"
+            });
+        }
+
+        if (new Date(currentUser.otp_expiry) < new Date()) {
+            return res.status(400).json({
+                message: "OTP expired"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await pool.query(
+            `UPDATE users
+             SET password = $1,
+                 otp = NULL,
+                 otp_expiry = NULL
+             WHERE email = $2`,
+            [hashedPassword, email]
+        );
+
+        res.json({
+            message: "Password reset successfully"
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            error: "Failed to reset password"
+        });
+
+    }
+};
 
 module.exports = {
     register,
     login,
     sendOTP,
-    verifyOTP
+    verifyOTP,
+    forgotPassword,
+    resetPassword
 
 };
